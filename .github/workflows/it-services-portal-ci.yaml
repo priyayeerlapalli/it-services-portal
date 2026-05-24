@@ -5,14 +5,34 @@ on:
 
 jobs:
 
-  build:
+  checkout:
 
+    name: Checkout
     runs-on: ubuntu-latest
 
     steps:
 
       - name: Checkout Source Code
         uses: actions/checkout@v4
+
+      - name: Upload Workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-code
+          path: .
+
+  compile:
+
+    name: Compile
+    runs-on: ubuntu-latest
+    needs: checkout
+
+    steps:
+
+      - name: Download Source Code
+        uses: actions/download-artifact@v4
+        with:
+          name: source-code
 
       - name: Setup JDK 21
         uses: actions/setup-java@v4
@@ -25,41 +45,103 @@ jobs:
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Verify Java & Maven
-        run: |
-          java -version
-          mvn -version
 
       - name: Compile Application
         run: mvn clean compile
 
+      - name: Upload Compiled Workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-workspace
+          path: .
+
+  checkstyle:
+
+    name: Checkstyle
+    runs-on: ubuntu-latest
+    needs: compile
+
+    steps:
+
+      - name: Download Compiled Workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-workspace
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Run Checkstyle
         run: mvn checkstyle:checkstyle
 
-      - name: Upload Checkstyle Reports
+      - name: Upload Checkstyle Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: checkstyle-report
           path: target/checkstyle-result.xml
 
+  unit-test:
+
+    name: Unit Test
+    runs-on: ubuntu-latest
+    needs: compile
+
+    steps:
+
+      - name: Download Compiled Workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-workspace
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Run Unit Tests
         run: mvn test
 
-      - name: Upload Unit Test Reports
+      - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: junit-test-reports
           path: target/surefire-reports/
 
-      - name: Generate JaCoCo Coverage Report
+      - name: Upload Tested Workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-workspace
+          path: .
+
+  coverage:
+
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: unit-test
+
+    steps:
+
+      - name: Download Tested Workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: tested-workspace
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Generate JaCoCo Coverage
         run: mvn jacoco:report
 
-      - name: Upload JaCoCo Coverage Reports
+      - name: Upload Coverage Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -67,6 +149,27 @@ jobs:
           path: |
             target/site/jacoco/
             target/site/jacoco/jacoco.xml
+
+  package:
+
+    name: Package
+    runs-on: ubuntu-latest
+    needs:
+      - checkstyle
+      - coverage
+
+    steps:
+
+      - name: Download Tested Workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: tested-workspace
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
       - name: Package Application
         run: mvn package -DskipTests
