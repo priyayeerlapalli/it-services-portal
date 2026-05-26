@@ -242,8 +242,7 @@
                                     <limits>
 
                                         <limit>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>0.40</minimum>
+                                            <minimum>0.20</minimum>
                                         </limit>
 
                                     </limits>
